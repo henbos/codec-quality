@@ -1,0 +1,21 @@
+Hello world!
+<!doctype html>
+<html>
+<head>
+  <title>Codec Quality</title>
+  <!-- <link rel="stylesheet" href="styles.css"/> -->
+</head>
+<body>
+  <p>
+    <select name="codec" id="codecSelectId" onchange="onChangeCodec()">
+      <!-- Options are added by main.js -->
+    </select>
+  </p>
+  <p>
+    <button onclick="onOpen(1280, 720)">Start 720p</button>
+    <button onclick="onOpen(1920, 1080)">Start 1080p</button>
+  </p>
+  <video id="video" width="1280" height="720" autoplay></video>
+</body>
+<script src="./main.js"></script>
+</html>
