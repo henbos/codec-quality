@@ -11,10 +11,32 @@ Hello world!
       <!-- Options are added by main.js -->
     </select>
   </p>
-  <p>
-    <button onclick="onOpen(1280, 720)">Start 720p</button>
-    <button onclick="onOpen(1920, 1080)">Start 1080p</button>
-  </p>
+  <table>
+    <tr>
+      <td>1080p</td>
+      <td>min</td>
+      <td>max</td>
+      <td><button onclick="onOpen(1920, 1080)">unlimited</button></td>
+    </tr>
+    <tr>
+      <td>720p</td>
+      <td>min</td>
+      <td>max</td>
+      <td><button onclick="onOpen(1280, 720)">unlimited</button></td>
+    </tr>
+    <tr>
+      <td>360p</td>
+      <td>min</td>
+      <td>max</td>
+      <td>unlimited</td>
+    </tr>
+    <tr>
+      <td>180p</td>
+      <td>min</td>
+      <td>max</td>
+      <td>unlimited</td>
+    </tr>
+  </table>
   <video id="video" width="1280" height="720" autoplay></video>
 </body>
 <script src="./main.js"></script>
