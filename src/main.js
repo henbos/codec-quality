@@ -32,6 +32,7 @@ window.onload = async () => {
     dummyPc1.close();
     dummyPc2.close();
   }
+
   // Add codec options to the drop-down.
   for (const codec of RTCRtpSender.getCapabilities('video').codecs) {
     if (codec.mimeType.endsWith('rtx') || codec.mimeType.endsWith('red') ||
@@ -62,6 +63,9 @@ window.onload = async () => {
     }
     kCodecSelect.appendChild(option);
   }
+
+  // Periodically poll getStats()
+  setInterval(doGetStats, 1000);
 }
 
 // Open camera and negotiate.
@@ -107,4 +111,17 @@ async function onChangeCodec() {
   const params = sender.getParameters();
   params.encodings[0].codec = codec;
   await sender.setParameters(params);
+}
+
+async function doGetStats() {
+  if (pc1 == null) {
+    return;
+  }
+  const report = await pc1.getStats();
+  for (const stats of report.values()) {
+    if (stats.type != 'outbound-rtp') {
+      continue;
+    }
+    console.log(stats.codecId);
+  }
 }
