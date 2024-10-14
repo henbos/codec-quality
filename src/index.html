@@ -6,14 +6,55 @@
 </head>
 <body>
   <p>
-    <select name="codec" id="codecSelectId" onchange="onChangeCodec()">
+    <select name="codec" id="codecSelectId" onchange="updateParameters()">
       <!-- Options are added by main.js -->
     </select>
   </p>
-  <p>
-    <button onclick="onOpen(1280, 720)">Start 720p</button>
-    <button onclick="onOpen(1920, 1080)">Start 1080p</button>
-  </p>
+  <td><button onclick="stop()">stop</button></td>
+  <!-- <td><button onclick="increaseBitrate()">+10% bitrate</button></td> -->
+  <p></p>
+  <table>
+    <tr>
+      <td></td>
+      <td>min</td>
+      <td>half-way</td>
+      <td>max</td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>1080p</td>
+      <td><button onclick="reconfigure(1920, 1080, 769)">769 kbps</button></td>
+      <td><button onclick="reconfigure(1920, 1080, 2237)">2237 kbps</button></td>
+      <td><button onclick="reconfigure(1920, 1080, 3705)">3705 kbps</button></td>
+      <td></td>
+      <td><button onclick="reconfigure(1920, 1080)">unrestricted</button></td>
+    </tr>
+    <tr>
+      <td>720p</td>
+      <td><button onclick="reconfigure(1280, 720, 481)">481 kbps</button></td>
+      <td><button onclick="reconfigure(1280, 720, 1079)">1079 kbps</button></td>
+      <td><button onclick="reconfigure(1280, 720, 1677)">1677 kbps</button></td>
+      <td></td>
+      <td><button onclick="reconfigure(1280, 720)">unrestricted</button></td>
+    </tr>
+    <tr>
+      <td>360p</td>
+      <td><button onclick="reconfigure(640, 360, 193)">193 kbps</button></td>
+      <td><button onclick="reconfigure(640, 360, 327)">327 kbps</button></td>
+      <td><button onclick="reconfigure(640, 360, 461)">461 kbps</button></td>
+      <td></td>
+      <td><button onclick="reconfigure(640, 360)">unrestricted</button></td>
+    </tr>
+    <tr>
+      <td>180p</td>
+      <td><button onclick="reconfigure(320, 180, 49)">49 kbps</button></td>
+      <td><button onclick="reconfigure(320, 180, 102)">102 kbps</button></td>
+      <td><button onclick="reconfigure(320, 180, 156)">156 kbps</button></td>
+      <td></td>
+      <td><button onclick="reconfigure(320, 180)">unrestricted</button></td>
+    </tr>
+  </table>
   <p id="consoleId">
   </p>
   <video id="video" width="1280" height="720" autoplay></video>
