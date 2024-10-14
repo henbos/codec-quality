@@ -1,9 +1,8 @@
-Hello world!
 <!doctype html>
 <html>
 <head>
   <title>Codec Quality</title>
-  <!-- <link rel="stylesheet" href="styles.css"/> -->
+  <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
   <p>
@@ -14,29 +13,31 @@ Hello world!
   <table>
     <tr>
       <td>1080p</td>
-      <td>min</td>
-      <td>max</td>
+      <td><button onclick="onOpen(1920, 1080, 769)">769 kbps</button></td>
+      <td><button onclick="onOpen(1920, 1080, 3705)">3705 kbps</button></td>
       <td><button onclick="onOpen(1920, 1080)">unlimited</button></td>
     </tr>
     <tr>
       <td>720p</td>
-      <td>min</td>
-      <td>max</td>
+      <td><button onclick="onOpen(1280, 720, 481)">481 kbps</button></td>
+      <td><button onclick="onOpen(1280, 720, 1677)">1677 kbps</button></td>
       <td><button onclick="onOpen(1280, 720)">unlimited</button></td>
     </tr>
     <tr>
       <td>360p</td>
-      <td>min</td>
-      <td>max</td>
-      <td>unlimited</td>
+      <td><button onclick="onOpen(640, 360, 193)">193 kbps</button></td>
+      <td><button onclick="onOpen(640, 360, 461)">461 kbps</button></td>
+      <td><button onclick="onOpen(640, 360)">unlimited</button></td>
     </tr>
     <tr>
       <td>180p</td>
-      <td>min</td>
-      <td>max</td>
-      <td>unlimited</td>
+      <td><button onclick="onOpen(320, 180, 49)">49 kbps</button></td>
+      <td><button onclick="onOpen(320, 180, 156)">156 kbps</button></td>
+      <td><button onclick="onOpen(320, 180)">unlimited</button></td>
     </tr>
   </table>
+  <p id="consoleId">
+  </p>
   <video id="video" width="1280" height="720" autoplay></video>
 </body>
 <script src="./main.js"></script>

@@ -1,3 +1,4 @@
+const kConsole = document.getElementById('consoleId');
 const kCodecSelect = document.getElementById('codecSelectId');
 const kVideo = document.getElementById('video');
 
@@ -12,9 +13,24 @@ function isPowerEfficient(codec) {
   return false;
 }
 
-let pc1 = null;
-let pc2 = null;
-let track = null;
+const kConsoleStatusGood = true;
+const kConsoleStatusBad = false;
+function uxConsoleLog(message, status) {
+  kConsole.innerText = message;
+  if (status) {
+    kConsole.classList.add('consoleStatusGood');
+    kConsole.classList.remove('consoleStatusBad');
+  } else {
+    kConsole.classList.remove('consoleStatusGood');
+    kConsole.classList.add('consoleStatusBad');
+  }
+}
+
+let _pc1 = null;
+let _pc2 = null;
+let _track = null;
+let _maxBitrate = undefined;
+let _prevReport = new Map();
 
 // When the page loads.
 window.onload = async () => {
@@ -49,7 +65,7 @@ window.onload = async () => {
           width: 1280,
           height: 720,
           framerate: 30,
-          bitrate: 2000000,  // 2000 kbps
+          bitrate: kbps_to_bps(2000),  // 2000 kbps
           scalabilityMode: 'L1T1'
         },
     });
@@ -58,7 +74,7 @@ window.onload = async () => {
     option.value = JSON.stringify(codec);
     option.innerText = contentType;
     if (info.powerEfficient) {
-      option.innerText += ' (HW)';
+      option.innerText += ' (powerEfficient)';
       kHardwareCodecs.push(codec);
     }
     kCodecSelect.appendChild(option);
@@ -69,59 +85,126 @@ window.onload = async () => {
 }
 
 // Open camera and negotiate.
-async function onOpen(width, height) {
-  if (pc1 != null) {
-    pc1.close();
-    pc2.close();
-    pc1 = pc2 = null;
+async function onOpen(width, height, maxBitrateKbps) {
+  _maxBitrate = kbps_to_bps(maxBitrateKbps);
+
+  _prevReport = new Map();
+  if (_pc1 != null) {
+    _pc1.close();
+    _pc2.close();
+    _pc1 = _pc2 = null;
   }
 
-  pc1 = new RTCPeerConnection();
-  pc2 = new RTCPeerConnection();
-  pc1.onicecandidate = (e) => pc2.addIceCandidate(e.candidate);
-  pc2.onicecandidate = (e) => pc1.addIceCandidate(e.candidate);
-  pc2.ontrack = (e) => {
+  _pc1 = new RTCPeerConnection();
+  _pc2 = new RTCPeerConnection();
+  _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
+  _pc2.onicecandidate = (e) => _pc1.addIceCandidate(e.candidate);
+  _pc2.ontrack = (e) => {
     kVideo.srcObject = new MediaStream();
     kVideo.srcObject.addTrack(e.track);
   };
 
-  if (track != null) {
-    track.stop();
-    track = null;
+  if (_track != null) {
+    _track.stop();
+    _track = null;
   }
   const stream = await navigator.mediaDevices.getUserMedia(
       {video: {width, height}});
-  track = stream.getTracks()[0];
+  _track = stream.getTracks()[0];
 
-  pc1.addTransceiver(track, {direction:'sendonly'});
+  _pc1.addTransceiver(_track, {direction:'sendonly'});
   await onChangeCodec();
 
-  await pc1.setLocalDescription();
-  await pc2.setRemoteDescription(pc1.localDescription);
-  await pc2.setLocalDescription();
-  await pc1.setRemoteDescription(pc2.localDescription);
+  await _pc1.setLocalDescription();
+  await _pc2.setRemoteDescription(_pc1.localDescription);
+  await _pc2.setLocalDescription();
+  await _pc1.setRemoteDescription(_pc2.localDescription);
 }
 
 async function onChangeCodec() {
   const codec = JSON.parse(kCodecSelect.value);
-  if (pc1 == null || pc1.getSenders().length != 1) {
+  if (_pc1 == null || _pc1.getSenders().length != 1) {
     return;
   }
-  const [sender] = pc1.getSenders();
+  const [sender] = _pc1.getSenders();
   const params = sender.getParameters();
   params.encodings[0].codec = codec;
+  params.encodings[0].maxBitrate = _maxBitrate;
   await sender.setParameters(params);
 }
 
 async function doGetStats() {
-  if (pc1 == null) {
+  if (_pc1 == null) {
     return;
   }
-  const report = await pc1.getStats();
+  const reportAsMap = new Map();
+  const report = await _pc1.getStats();
   for (const stats of report.values()) {
+    reportAsMap.set(stats.id, stats);
     if (stats.type != 'outbound-rtp') {
       continue;
     }
-    console.log(stats.codecId);
+    let codec = report.get(stats.codecId);
+    if (codec) {
+      codec = codec.mimeType.substring(6);
+    } else {
+      codec = '';
+    }
+    let width = stats.frameWidth;
+    let height = stats.frameHeight;
+    if (!width || !height) {
+      width = height = 0;
+    }
+    let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
+    actualKbps = Math.max(0, actualKbps);
+    const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
+    let adapt =
+        stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
+    adapt = (adapt != 'none') ? `${adapt} limited` : '';
+
+    let trackSettings = _track?.getSettings();
+    let trackWidth = trackSettings?.width ? trackSettings.width : -1;
+    let trackHeight = trackSettings?.height ? trackSettings.height : -1;
+    uxConsoleLog(
+        `${codec} ${width}x${height} ${actualKbps} (${targetKbps}) ${adapt}`,
+        width == trackWidth && height == trackHeight ? kConsoleStatusGood
+                                                     : kConsoleStatusBad);
   }
+  _prevReport = reportAsMap;
+}
+
+// utils.js
+
+function delta(stats, metricName) {
+  const currMetric = stats[metricName];
+  if (currMetric == undefined) {
+    return undefined;
+  }
+  const prevStats = _prevReport.get(stats.id);
+  if (!prevStats) {
+    return currMetric;
+  }
+  const prevMetric = prevStats[metricName];
+  if (prevMetric == undefined) {
+    return currMetric;
+  }
+  const deltaTimestampS = (stats.timestamp - prevStats.timestamp) / 1000;
+  return (currMetric - prevMetric) / deltaTimestampS;
+}
+
+function convert(x, fn) {
+  if (x == undefined) {
+    return undefined;
+  }
+  return fn(x);
+}
+
+function Bps_to_kbps(x) {
+  return convert(x, x => x * 8 / 1000);
+}
+function bps_to_kbps(x) {
+  return convert(x, x => x / 1000);
+}
+function kbps_to_bps(x) {
+  return convert(x, x => x * 1000);
 }
