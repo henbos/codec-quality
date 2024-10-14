@@ -154,12 +154,15 @@ async function doGetStats() {
     let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
     actualKbps = Math.max(0, actualKbps);
     const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
+    let adapt =
+        stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
+    adapt = (adapt != 'none') ? `${adapt} limited` : '';
 
     let trackSettings = track?.getSettings();
     let trackWidth = trackSettings?.width ? trackSettings.width : -1;
     let trackHeight = trackSettings?.height ? trackSettings.height : -1;
     uxConsoleLog(
-        `${codec} ${width}x${height} ${actualKbps} (${targetKbps})`,
+        `${codec} ${width}x${height} ${actualKbps} (${targetKbps}) ${adapt}`,
         width == trackWidth && height == trackHeight ? kConsoleStatusGood
                                                      : kConsoleStatusBad);
   }
