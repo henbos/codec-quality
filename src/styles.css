@@ -2,6 +2,10 @@
   font-family: "Lucida Console", "Courier New", monospace;
 }
 
+td {
+  text-align: center;
+}
+
 .consoleStatusGood {
   color: limegreen;
 }

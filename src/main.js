@@ -84,44 +84,56 @@ window.onload = async () => {
   setInterval(doGetStats, 1000);
 }
 
-// Open camera and negotiate.
-async function onOpen(width, height, maxBitrateKbps) {
-  _maxBitrate = kbps_to_bps(maxBitrateKbps);
-
+function stop() {
   _prevReport = new Map();
   if (_pc1 != null) {
     _pc1.close();
     _pc2.close();
     _pc1 = _pc2 = null;
   }
+  _maxBitrate = undefined;
+  stopTrack();
+}
 
-  _pc1 = new RTCPeerConnection();
-  _pc2 = new RTCPeerConnection();
-  _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
-  _pc2.onicecandidate = (e) => _pc1.addIceCandidate(e.candidate);
-  _pc2.ontrack = (e) => {
-    kVideo.srcObject = new MediaStream();
-    kVideo.srcObject.addTrack(e.track);
-  };
-
+function stopTrack() {
   if (_track != null) {
     _track.stop();
     _track = null;
   }
-  const stream = await navigator.mediaDevices.getUserMedia(
-      {video: {width, height}});
-  _track = stream.getTracks()[0];
-
-  _pc1.addTransceiver(_track, {direction:'sendonly'});
-  await onChangeCodec();
-
-  await _pc1.setLocalDescription();
-  await _pc2.setRemoteDescription(_pc1.localDescription);
-  await _pc2.setLocalDescription();
-  await _pc1.setRemoteDescription(_pc2.localDescription);
 }
 
-async function onChangeCodec() {
+async function reconfigure(width, height, maxBitrateKbps) {
+  _maxBitrate = kbps_to_bps(maxBitrateKbps);
+
+  if (_pc1 == null) {
+    _pc1 = new RTCPeerConnection();
+    _pc2 = new RTCPeerConnection();
+    _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
+    _pc2.onicecandidate = (e) => _pc1.addIceCandidate(e.candidate);
+    _pc2.ontrack = (e) => {
+      kVideo.srcObject = new MediaStream();
+      kVideo.srcObject.addTrack(e.track);
+    };
+    _pc1.addTransceiver('video', {direction:'sendonly'});
+    await _pc1.setLocalDescription();
+    await _pc2.setRemoteDescription(_pc1.localDescription);
+    await _pc2.setLocalDescription();
+    await _pc1.setRemoteDescription(_pc2.localDescription);
+  }
+
+  const oldSettings = _track?.getSettings();
+  if (oldSettings?.width != width || oldSettings?.height != height) {
+    stopTrack();
+    const stream = await navigator.mediaDevices.getUserMedia(
+        {video: {width, height}});
+    _track = stream.getTracks()[0];
+    await _pc1.getSenders()[0].replaceTrack(_track);
+  }
+
+  await updateParameters();
+}
+
+async function updateParameters() {
   const codec = JSON.parse(kCodecSelect.value);
   if (_pc1 == null || _pc1.getSenders().length != 1) {
     return;
@@ -155,18 +167,21 @@ async function doGetStats() {
     if (!width || !height) {
       width = height = 0;
     }
+    let fps = stats.framesPerSecond;
     let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
     actualKbps = Math.max(0, actualKbps);
     const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
-    let adapt =
+    let adaptationReason =
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
-    adapt = (adapt != 'none') ? `${adapt} limited` : '';
+    adaptationReason =
+        (adaptationReason != 'none') ? `, ${adaptationReason} limited` : '';
 
     let trackSettings = _track?.getSettings();
     let trackWidth = trackSettings?.width ? trackSettings.width : -1;
     let trackHeight = trackSettings?.height ? trackSettings.height : -1;
     uxConsoleLog(
-        `${codec} ${width}x${height} ${actualKbps} (${targetKbps}) ${adapt}`,
+        `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
+        `${targetKbps} kbps${adaptationReason}`,
         width == trackWidth && height == trackHeight ? kConsoleStatusGood
                                                      : kConsoleStatusBad);
   }
