@@ -13,6 +13,19 @@ function isPowerEfficient(codec) {
   return false;
 }
 
+const kConsoleStatusGood = true;
+const kConsoleStatusBad = false;
+function uxConsoleLog(message, status) {
+  kConsole.innerText = message;
+  if (status) {
+    kConsole.classList.add('consoleStatusGood');
+    kConsole.classList.remove('consoleStatusBad');
+  } else {
+    kConsole.classList.remove('consoleStatusGood');
+    kConsole.classList.add('consoleStatusBad');
+  }
+}
+
 let pc1 = null;
 let pc2 = null;
 let track = null;
@@ -60,7 +73,7 @@ window.onload = async () => {
     option.value = JSON.stringify(codec);
     option.innerText = contentType;
     if (info.powerEfficient) {
-      option.innerText += ' (HW)';
+      option.innerText += ' (powerEfficient)';
       kHardwareCodecs.push(codec);
     }
     kCodecSelect.appendChild(option);
@@ -141,8 +154,14 @@ async function doGetStats() {
     let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
     actualKbps = Math.max(0, actualKbps);
     const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
-    kConsole.innerText =
-        `${codec} ${width}x${height} ${actualKbps} (${targetKbps})`;
+
+    let trackSettings = track?.getSettings();
+    let trackWidth = trackSettings?.width ? trackSettings.width : -1;
+    let trackHeight = trackSettings?.height ? trackSettings.height : -1;
+    uxConsoleLog(
+        `${codec} ${width}x${height} ${actualKbps} (${targetKbps})`,
+        width == trackWidth && height == trackHeight ? kConsoleStatusGood
+                                                     : kConsoleStatusBad);
   }
   prevReport = reportAsMap;
 }
