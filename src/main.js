@@ -1,3 +1,4 @@
+const kConsole = document.getElementById('consoleId');
 const kCodecSelect = document.getElementById('codecSelectId');
 const kVideo = document.getElementById('video');
 
@@ -15,6 +16,7 @@ function isPowerEfficient(codec) {
 let pc1 = null;
 let pc2 = null;
 let track = null;
+let prevReport = new Map();
 
 // When the page loads.
 window.onload = async () => {
@@ -70,6 +72,7 @@ window.onload = async () => {
 
 // Open camera and negotiate.
 async function onOpen(width, height) {
+  prevReport = new Map();
   if (pc1 != null) {
     pc1.close();
     pc2.close();
@@ -117,11 +120,60 @@ async function doGetStats() {
   if (pc1 == null) {
     return;
   }
+  const reportAsMap = new Map();
   const report = await pc1.getStats();
   for (const stats of report.values()) {
+    reportAsMap.set(stats.id, stats);
     if (stats.type != 'outbound-rtp') {
       continue;
     }
-    console.log(stats.codecId);
+    let codec = report.get(stats.codecId);
+    if (codec) {
+      codec = codec.mimeType.substring(6);
+    } else {
+      codec = '';
+    }
+    let width = stats.frameWidth;
+    let height = stats.frameHeight;
+    if (!width || !height) {
+      width = height = 0;
+    }
+    let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
+    actualKbps = Math.max(0, actualKbps);
+    const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
+    kConsole.innerText =
+        `${codec} ${width}x${height} ${actualKbps} (${targetKbps})`;
   }
+  prevReport = reportAsMap;
+}
+
+function delta(stats, metricName) {
+  const currMetric = stats[metricName];
+  if (currMetric == undefined) {
+    return undefined;
+  }
+  const prevStats = prevReport.get(stats.id);
+  if (!prevStats) {
+    return currMetric;
+  }
+  const prevMetric = prevStats[metricName];
+  if (prevMetric == undefined) {
+    return currMetric;
+  }
+  const deltaTimestampS = (stats.timestamp - prevStats.timestamp) / 1000;
+  return (currMetric - prevMetric) / deltaTimestampS;
+}
+
+function convert(x, fn) {
+  if (x == undefined) {
+    return undefined;
+  }
+  return fn(x);
+}
+
+function Bps_to_kbps(x) {
+  return convert(x, x => x * 8 / 1000);
+}
+function bps_to_kbps(x) {
+  return convert(x, x => x / 1000);
 }
