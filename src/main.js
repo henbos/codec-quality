@@ -159,6 +159,9 @@ async function doGetStats() {
     let codec = report.get(stats.codecId);
     if (codec) {
       codec = codec.mimeType.substring(6);
+      if (stats.encoderImplementation) {
+        codec = `${stats.encoderImplementation}:${codec}`;
+      }
     } else {
       codec = '';
     }
