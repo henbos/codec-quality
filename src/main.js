@@ -314,12 +314,13 @@ function simplifyEncoderString(rid, encoderImplementation) {
   if (!encoderImplementation) {
     return null;
   }
-  if (encoderImplementation.startsWith('SimulcastEncoderAdapter')) {
+  if (encoderImplementation.startsWith('SimulcastEncoderAdapter') &&
+      rid != undefined) {
     let simplified = encoderImplementation.substring(
         encoderImplementation.indexOf('(') + 1,
         encoderImplementation.length - 1);
     simplified = simplified.split(', ');
-    if (simplified.length === 3 && rid != undefined) {
+    if (simplified.length > 1 && Number(rid) < simplified.length) {
       // We only know how to simplify the string if we have three encoders
       // otherwise the RID might not map 1:1 to the index here.
       return `[${simplified[rid]}]`;
