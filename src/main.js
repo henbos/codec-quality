@@ -1,4 +1,6 @@
 const kConsole = document.getElementById('consoleId');
+
+const kSimulcastCheckbox = document.getElementById('simulcastCheckboxId');
 const kCodecSelect = document.getElementById('codecSelectId');
 const kVideo = document.getElementById('video');
 
@@ -29,6 +31,7 @@ function uxConsoleLog(message, status) {
 let _pc1 = null;
 let _pc2 = null;
 let _track = null;
+let _maxWidth = 0, _maxHeight = 0;
 let _maxBitrate = undefined;
 let _prevReport = new Map();
 
@@ -103,6 +106,8 @@ function stopTrack() {
 }
 
 async function reconfigure(width, height, maxBitrateKbps) {
+  const doSimulcast = kSimulcastCheckbox.checked;
+
   _maxBitrate = kbps_to_bps(maxBitrateKbps);
 
   if (_pc1 == null) {
@@ -110,26 +115,47 @@ async function reconfigure(width, height, maxBitrateKbps) {
     _pc2 = new RTCPeerConnection();
     _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
     _pc2.onicecandidate = (e) => _pc1.addIceCandidate(e.candidate);
-    _pc2.ontrack = (e) => {
-      kVideo.srcObject = new MediaStream();
-      kVideo.srcObject.addTrack(e.track);
-    };
-    _pc1.addTransceiver('video', {direction:'sendonly'});
-    await _pc1.setLocalDescription();
-    await _pc2.setRemoteDescription(_pc1.localDescription);
-    await _pc2.setLocalDescription();
-    await _pc1.setRemoteDescription(_pc2.localDescription);
+    if (!doSimulcast) {
+      // Negotiate singlecast.
+      _pc1.addTransceiver('video', {direction:'sendonly'});
+      _pc2.ontrack = (e) => {
+        kVideo.srcObject = new MediaStream();
+        kVideo.srcObject.addTrack(e.track);
+      };
+      await _pc1.setLocalDescription();
+      await _pc2.setRemoteDescription(_pc1.localDescription);
+      await _pc2.setLocalDescription();
+      await _pc1.setRemoteDescription(_pc2.localDescription);
+    } else {
+      // Negotiate simulcast.
+      _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 4, active: true},
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 2, active: true},
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
+      ]});
+      await negotiateWithSimulcastTweaks(_pc1, _pc2);
+    }
+    // The remote track is wired up based on getStats().
   }
 
-  const oldSettings = _track?.getSettings();
-  if (oldSettings?.width != width || oldSettings?.height != height) {
-    stopTrack();
-    const stream = await navigator.mediaDevices.getUserMedia(
-        {video: {width, height}});
-    _track = stream.getTracks()[0];
-    await _pc1.getSenders()[0].replaceTrack(_track);
+  _maxWidth = width;
+  _maxHeight = height;
+  if (!doSimulcast || _track == null) {
+    if (!doSimulcast) {
+      stopTrack();
+    }
+    // In singlecast we re-open the camera in a new resolution as a workaround
+    // to scaleResolutionDownBy:2 doing weird things in H264. In simulcast we
+    // always do 720p and delegate the scaling to `updateParameters()`.
+    const cameraWidth = doSimulcast ? 1280 : _maxWidth;
+    const cameraHeight = doSimulcast ? 720 : _maxHeight;
+    if (_track == null) {
+      const stream = await navigator.mediaDevices.getUserMedia(
+          {video: {width: cameraWidth, height: cameraHeight}});
+      _track = stream.getTracks()[0];
+      await _pc1.getSenders()[0].replaceTrack(_track);
+    }
   }
-
   await updateParameters();
 }
 
@@ -140,8 +166,25 @@ async function updateParameters() {
   }
   const [sender] = _pc1.getSenders();
   const params = sender.getParameters();
-  params.encodings[0].codec = codec;
-  params.encodings[0].maxBitrate = _maxBitrate;
+  // Adjust codec and bitrate.
+  for (let i = 0; i < params.encodings.length; ++i) {
+    params.encodings[i].codec = codec;
+    params.encodings[i].maxBitrate = _maxBitrate;
+  }
+  // In simulcast we enable or disable layers based on scale factor rather than
+  // reconfigure the track.
+  if (params.encodings.length == 3) {
+    const trackSettings = _track?.getSettings();
+    let trackHeight = trackSettings?.height ? trackSettings.height : 0;
+    let scaleFactor = 1;
+    if (trackHeight > _maxWidth) {
+      scaleFactor = trackHeight / _maxWidth;
+    }
+    for (let i = 0; i < params.encodings.length; ++i) {
+      params.encodings[i].active =
+          params.encodings[i].scaleResolutionDownBy >= scaleFactor;
+    }
+  }
   await sender.setParameters(params);
 }
 
@@ -151,19 +194,35 @@ async function doGetStats() {
   }
   const reportAsMap = new Map();
   const report = await _pc1.getStats();
+  let maxSendRid = undefined, maxSendWidth = 0, maxSendHeight = 0;
+  let message = '';
+  const outboundRtpsByRid = new Map();
   for (const stats of report.values()) {
     reportAsMap.set(stats.id, stats);
-    if (stats.type != 'outbound-rtp') {
+    if (stats.type !== 'outbound-rtp') {
+      continue;
+    }
+    outboundRtpsByRid.set(
+        stats.rid != undefined ? Number(stats.rid) : 0, stats);
+  }
+  for (let i = 0; i < 3; ++i) {
+    const stats = outboundRtpsByRid.get(i);
+    if (!stats) {
       continue;
     }
     let codec = report.get(stats.codecId);
     if (codec) {
       codec = codec.mimeType.substring(6);
       if (stats.encoderImplementation) {
-        codec = `${stats.encoderImplementation}:${codec}`;
+        const impl = simplifyEncoderString(stats.rid,
+                                           stats.encoderImplementation);
+        codec = `${impl}:${codec}`;
       }
     } else {
       codec = '';
+    }
+    if (stats.rid) {
+      codec = `${stats.rid} ${codec}`;
     }
     let width = stats.frameWidth;
     let height = stats.frameHeight;
@@ -171,6 +230,11 @@ async function doGetStats() {
       width = height = 0;
     }
     let fps = stats.framesPerSecond;
+    if (fps && height > maxSendHeight) {
+      maxSendRid = stats.rid;
+      maxSendWidth = width;
+      maxSendHeight = height;
+    }
     let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
     actualKbps = Math.max(0, actualKbps);
     const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
@@ -178,16 +242,35 @@ async function doGetStats() {
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
     adaptationReason =
         (adaptationReason != 'none') ? `, ${adaptationReason} limited` : '';
-
-    let trackSettings = _track?.getSettings();
-    let trackWidth = trackSettings?.width ? trackSettings.width : -1;
-    let trackHeight = trackSettings?.height ? trackSettings.height : -1;
-    uxConsoleLog(
-        `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
-        `${targetKbps} kbps${adaptationReason}`,
-        width == trackWidth && height == trackHeight ? kConsoleStatusGood
-                                                     : kConsoleStatusBad);
+    if (message.length > 0) {
+      message += '\n';
+    }
+    if (fps) {
+      message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
+                 `${targetKbps} kbps${adaptationReason}`;
+    } else {
+      message += `-`;
+    }
   }
+  uxConsoleLog(message,
+               maxSendHeight == _maxHeight ? kConsoleStatusGood
+                                           : kConsoleStatusBad);
+
+  // Maybe change which remote track to display.
+  if (maxSendRid != undefined) {
+    maxSendRid = Number(maxSendRid);
+  }
+  const recvTransceivers = _pc2?.getTransceivers();
+  if (recvTransceivers && Number.isInteger(maxSendRid) &&
+      maxSendRid < recvTransceivers.length) {
+    let prevTrack = kVideo.srcObject ? kVideo.srcObject.getTracks()[0] : null;
+    let currTrack = recvTransceivers[maxSendRid].receiver.track;
+    if (currTrack != prevTrack) {
+      kVideo.srcObject = new MediaStream();
+      kVideo.srcObject.addTrack(currTrack);
+    }
+  }
+
   _prevReport = reportAsMap;
 }
 
@@ -225,4 +308,22 @@ function bps_to_kbps(x) {
 }
 function kbps_to_bps(x) {
   return convert(x, x => x * 1000);
+}
+
+function simplifyEncoderString(rid, encoderImplementation) {
+  if (!encoderImplementation) {
+    return null;
+  }
+  if (encoderImplementation.startsWith('SimulcastEncoderAdapter')) {
+    let simplified = encoderImplementation.substring(
+        encoderImplementation.indexOf('(') + 1,
+        encoderImplementation.length - 1);
+    simplified = simplified.split(', ');
+    if (simplified.length === 3 && rid != undefined) {
+      // We only know how to simplify the string if we have three encoders
+      // otherwise the RID might not map 1:1 to the index here.
+      return `[${simplified[rid]}]`;
+    }
+  }
+  return encoderImplementation;
 }

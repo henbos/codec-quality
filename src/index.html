@@ -13,6 +13,9 @@
   <td><button onclick="stop()">stop</button></td>
   <!-- <td><button onclick="increaseBitrate()">+10% bitrate</button></td> -->
   <p></p>
+  <input type="checkbox" id="simulcastCheckboxId" name="simulcastCheckbox"
+         checked onclick="stop()"/>
+  <label for="simulcastCheckbox">Simulcast</label>
   <table>
     <tr>
       <td></td>
@@ -22,6 +25,7 @@
       <td></td>
       <td></td>
     </tr>
+    <!-- Commented out because of not wanting to deal with 1080p scale factors.
     <tr>
       <td>1080p</td>
       <td><button onclick="reconfigure(1920, 1080, 769)">769 kbps</button></td>
@@ -29,7 +33,7 @@
       <td><button onclick="reconfigure(1920, 1080, 3705)">3705 kbps</button></td>
       <td></td>
       <td><button onclick="reconfigure(1920, 1080)">unrestricted</button></td>
-    </tr>
+    </tr>-->
     <tr>
       <td>720p</td>
       <td><button onclick="reconfigure(1280, 720, 481)">481 kbps</button></td>
@@ -59,5 +63,7 @@
   </p>
   <video id="video" width="1280" height="720" autoplay></video>
 </body>
+<script src="./sdp.js"></script>
+<script src="./simulcast.js"></script>
 <script src="./main.js"></script>
 </html>
