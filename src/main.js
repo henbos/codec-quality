@@ -87,6 +87,28 @@ window.onload = async () => {
   setInterval(doGetStats, 1000);
 }
 
+function getSelectedCodec() {
+  return JSON.parse(kCodecSelect.value);
+}
+
+// Workaround to H265 not being selectable from setParameters() sometimes.
+function pc2MaybePreferH265Workaround() {
+  if (getSelectedCodec().mimeType != 'video/H265') {
+    return;
+  }
+  const codecsH265 = RTCRtpReceiver.getCapabilities('video').codecs.filter(
+      codec => codec.mimeType == 'video/H265');
+  const otherCodecs = RTCRtpReceiver.getCapabilities('video').codecs.filter(
+      codec => codec.mimeType != 'video/H265');
+  _pc2.getTransceivers()[0].setCodecPreferences(
+      codecsH265.concat(otherCodecs));
+}
+// Workaround to H265 rejecting L1T1 (even though it is defaulting to L1T1).
+// For other codecs we want to explicitly set it (needed for VP9/AV1 simulcast).
+function getScalabilityModeOrUndefined() {
+  return getSelectedCodec().mimeType != 'video/H265' ? 'L1T1' : undefined;
+}
+
 function stop() {
   _prevReport = new Map();
   if (_pc1 != null) {
@@ -110,7 +132,9 @@ async function reconfigure(width, height, maxBitrateKbps) {
 
   _maxBitrate = kbps_to_bps(maxBitrateKbps);
 
+  let isFirstTimeNegotiation = false;
   if (_pc1 == null) {
+    isFirstTimeNegotiation = true;
     _pc1 = new RTCPeerConnection();
     _pc2 = new RTCPeerConnection();
     _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
@@ -124,16 +148,21 @@ async function reconfigure(width, height, maxBitrateKbps) {
       };
       await _pc1.setLocalDescription();
       await _pc2.setRemoteDescription(_pc1.localDescription);
+      pc2MaybePreferH265Workaround();
       await _pc2.setLocalDescription();
       await _pc1.setRemoteDescription(_pc2.localDescription);
     } else {
       // Negotiate simulcast.
       _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
-          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 4, active: true},
-          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 2, active: true},
-          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
+          {scalabilityMode: getScalabilityModeOrUndefined(),
+           scaleResolutionDownBy: 4, active: true},
+          {scalabilityMode: getScalabilityModeOrUndefined(),
+           scaleResolutionDownBy: 2, active: true},
+          {scalabilityMode: getScalabilityModeOrUndefined(),
+           scaleResolutionDownBy: 1, active: true},
       ]});
-      await negotiateWithSimulcastTweaks(_pc1, _pc2);
+      await negotiateWithSimulcastTweaks(
+          _pc1, _pc2, null, pc2MaybePreferH265Workaround);
     }
     // The remote track is wired up based on getStats().
   }
@@ -156,11 +185,13 @@ async function reconfigure(width, height, maxBitrateKbps) {
       await _pc1.getSenders()[0].replaceTrack(_track);
     }
   }
-  await updateParameters();
+  // Workaround to not being able to specify H265 as the send codec in
+  // setParameters() but still wanting to set parameters for bitrate.
+  await updateParameters(/*skipH265=*/true);
 }
 
-async function updateParameters() {
-  const codec = JSON.parse(kCodecSelect.value);
+async function updateParameters(skipH265 = false) {
+  const codec = getSelectedCodec();
   if (_pc1 == null || _pc1.getSenders().length != 1) {
     return;
   }
@@ -168,8 +199,13 @@ async function updateParameters() {
   const params = sender.getParameters();
   // Adjust codec and bitrate.
   for (let i = 0; i < params.encodings.length; ++i) {
-    params.encodings[i].codec = codec;
+    if (!skipH265 && codec.mimeType != 'video/H265') {
+      params.encodings[i].codec = codec;
+    } else {
+      delete params.encodings[i].codec;
+    }
     params.encodings[i].maxBitrate = _maxBitrate;
+    params.encodings[i].scalabilityMode = getScalabilityModeOrUndefined();
   }
   // In simulcast we enable or disable layers based on scale factor rather than
   // reconfigure the track.
@@ -185,7 +221,12 @@ async function updateParameters() {
           params.encodings[i].scaleResolutionDownBy >= scaleFactor;
     }
   }
-  await sender.setParameters(params);
+  try {
+    await sender.setParameters(params);
+  } catch (e) {
+    stop();
+    uxConsoleLog(e.message, kConsoleStatusBad);
+  }
 }
 
 async function doGetStats() {
