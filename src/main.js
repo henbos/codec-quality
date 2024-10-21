@@ -170,7 +170,8 @@ async function reconfigure(width, height, maxBitrateKbps) {
   _maxWidth = width;
   _maxHeight = height;
   if (!doSimulcast || _track == null) {
-    if (!doSimulcast) {
+    if (!doSimulcast &&
+        (_track == null || _track.getSettings().height != _maxHeight)) {
       stopTrack();
     }
     // In singlecast we re-open the camera in a new resolution as a workaround
@@ -199,7 +200,7 @@ async function updateParameters(skipH265 = false) {
   const params = sender.getParameters();
   // Adjust codec and bitrate.
   for (let i = 0; i < params.encodings.length; ++i) {
-    if (!skipH265 && codec.mimeType != 'video/H265') {
+    if (!skipH265 || codec.mimeType != 'video/H265') {
       params.encodings[i].codec = codec;
     } else {
       delete params.encodings[i].codec;
