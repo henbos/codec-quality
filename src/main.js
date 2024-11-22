@@ -103,11 +103,6 @@ function pc2MaybePreferH265Workaround() {
   _pc2.getTransceivers()[0].setCodecPreferences(
       codecsH265.concat(otherCodecs));
 }
-// Workaround to H265 rejecting L1T1 (even though it is defaulting to L1T1).
-// For other codecs we want to explicitly set it (needed for VP9/AV1 simulcast).
-function getScalabilityModeOrUndefined() {
-  return getSelectedCodec().mimeType != 'video/H265' ? 'L1T1' : undefined;
-}
 
 function stop() {
   _prevReport = new Map();
@@ -148,18 +143,17 @@ async function reconfigure(width, height, maxBitrateKbps) {
       };
       await _pc1.setLocalDescription();
       await _pc2.setRemoteDescription(_pc1.localDescription);
+      console.log(_pc1.localDescription.sdp.replaceAll('\r\n', '\n'));
       pc2MaybePreferH265Workaround();
       await _pc2.setLocalDescription();
       await _pc1.setRemoteDescription(_pc2.localDescription);
+      console.log(_pc2.localDescription.sdp.replaceAll('\r\n', '\n'));
     } else {
       // Negotiate simulcast.
       _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
-          {scalabilityMode: getScalabilityModeOrUndefined(),
-           scaleResolutionDownBy: 4, active: true},
-          {scalabilityMode: getScalabilityModeOrUndefined(),
-           scaleResolutionDownBy: 2, active: true},
-          {scalabilityMode: getScalabilityModeOrUndefined(),
-           scaleResolutionDownBy: 1, active: true},
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 4, active: true},
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 2, active: true},
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
       ]});
       await negotiateWithSimulcastTweaks(
           _pc1, _pc2, null, pc2MaybePreferH265Workaround);
@@ -206,7 +200,7 @@ async function updateParameters(skipH265 = false) {
       delete params.encodings[i].codec;
     }
     params.encodings[i].maxBitrate = _maxBitrate;
-    params.encodings[i].scalabilityMode = getScalabilityModeOrUndefined();
+    params.encodings[i].scalabilityMode = 'L1T1';
   }
   // In simulcast we enable or disable layers based on scale factor rather than
   // reconfigure the track.
