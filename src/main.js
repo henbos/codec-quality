@@ -122,6 +122,39 @@ function stopTrack() {
   }
 }
 
+function mungeDependencyDescriptor(sdp) {
+  const kDependencyDescriptorUri =
+      'https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension';
+  if (sdp.includes(kDependencyDescriptorUri)) {
+    // Apparently, this is included by default when doing simulcast so this can
+    // be a NO-OP.
+    return sdp;
+  }
+  const kExtMapLine = 'a=extmap:';
+  let highestExtId = 1;
+  let lastExtensionEndIndex = -1;
+  for (let i = 0; i < sdp.length; i = lastExtensionEndIndex) {
+    let beginIndex = sdp.indexOf(kExtMapLine, i);
+    if (beginIndex == -1) {
+      break;
+    }
+    beginIndex += kExtMapLine.length;
+    const endIndex = sdp.indexOf(' ', beginIndex);
+    const extId = Number(sdp.slice(beginIndex, endIndex));
+    lastExtensionEndIndex = sdp.indexOf('\r\n', endIndex) + 2;
+    if (highestExtId < extId) {
+      highestExtId = extId;
+    }
+  }
+  if (lastExtensionEndIndex != -1) {
+    sdp =
+        sdp.slice(0, lastExtensionEndIndex) +
+        `a=extmap:${highestExtId + 1} ${kDependencyDescriptorUri}\r\n` +
+        sdp.slice(lastExtensionEndIndex);
+  }
+  return sdp;
+}
+
 async function reconfigure(width, height, maxBitrateKbps) {
   const doSimulcast = kSimulcastCheckbox.checked;
 
@@ -142,12 +175,16 @@ async function reconfigure(width, height, maxBitrateKbps) {
         kVideo.srcObject.addTrack(e.track);
       };
       await _pc1.setLocalDescription();
-      await _pc2.setRemoteDescription(_pc1.localDescription);
-      console.log(_pc1.localDescription.sdp.replaceAll('\r\n', '\n'));
+      await _pc2.setRemoteDescription({
+        type: 'offer',
+        sdp: mungeDependencyDescriptor(_pc1.localDescription.sdp)
+      });
       pc2MaybePreferH265Workaround();
       await _pc2.setLocalDescription();
-      await _pc1.setRemoteDescription(_pc2.localDescription);
-      console.log(_pc2.localDescription.sdp.replaceAll('\r\n', '\n'));
+      await _pc1.setRemoteDescription({
+        type: 'answer',
+        sdp: mungeDependencyDescriptor(_pc2.localDescription.sdp)
+      });
     } else {
       // Negotiate simulcast.
       _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
@@ -156,7 +193,8 @@ async function reconfigure(width, height, maxBitrateKbps) {
           {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
       ]});
       await negotiateWithSimulcastTweaks(
-          _pc1, _pc2, null, pc2MaybePreferH265Workaround);
+          _pc1, _pc2, null, pc2MaybePreferH265Workaround,
+          mungeDependencyDescriptor);
     }
     // The remote track is wired up based on getStats().
   }
