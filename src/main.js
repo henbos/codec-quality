@@ -99,14 +99,17 @@ function stop() {
     _pc1 = _pc2 = null;
   }
   _maxBitrate = undefined;
-  stopTrack();
-}
-
-function stopTrack() {
   if (_track != null) {
     _track.stop();
     _track = null;
   }
+}
+
+async function toggleSimulcast() {
+  if (_pc1 == null) {
+    return;
+  }
+  reconfigure(_maxWidth, _maxHeight, bps_to_kbps(_maxBitrate));
 }
 
 function mungeDependencyDescriptor(sdp) {
@@ -145,8 +148,6 @@ function mungeDependencyDescriptor(sdp) {
 async function reconfigure(width, height, maxBitrateKbps) {
   const doSimulcast = kSimulcastCheckbox.checked;
 
-  _maxBitrate = kbps_to_bps(maxBitrateKbps);
-
   let isFirstTimeNegotiation = false;
   if (_pc1 == null) {
     isFirstTimeNegotiation = true;
@@ -154,54 +155,33 @@ async function reconfigure(width, height, maxBitrateKbps) {
     _pc2 = new RTCPeerConnection();
     _pc1.onicecandidate = (e) => _pc2.addIceCandidate(e.candidate);
     _pc2.onicecandidate = (e) => _pc1.addIceCandidate(e.candidate);
+    // Negotiate simulcast regardless. Singlecast = single active encoding.
     if (!doSimulcast) {
-      // Negotiate singlecast.
-      _pc1.addTransceiver('video', {direction:'sendonly'});
-      _pc2.ontrack = (e) => {
-        kVideo.srcObject = new MediaStream();
-        kVideo.srcObject.addTrack(e.track);
-      };
-      await _pc1.setLocalDescription();
-      await _pc2.setRemoteDescription({
-        type: 'offer',
-        sdp: mungeDependencyDescriptor(_pc1.localDescription.sdp)
-      });
-      await _pc2.setLocalDescription();
-      await _pc1.setRemoteDescription({
-        type: 'answer',
-        sdp: mungeDependencyDescriptor(_pc2.localDescription.sdp)
-      });
+      _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
+          {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
+          {scalabilityMode: 'L1T1', active: false},
+          {scalabilityMode: 'L1T1', active: false},
+      ]});
     } else {
-      // Negotiate simulcast.
       _pc1.addTransceiver('video', {direction:'sendonly', sendEncodings: [
           {scalabilityMode: 'L1T1', scaleResolutionDownBy: 4, active: true},
           {scalabilityMode: 'L1T1', scaleResolutionDownBy: 2, active: true},
           {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
       ]});
-      await negotiateWithSimulcastTweaks(
-          _pc1, _pc2, null, mungeDependencyDescriptor);
     }
-    // The remote track is wired up based on getStats().
+    await negotiateWithSimulcastTweaks(
+        _pc1, _pc2, null, mungeDependencyDescriptor);
   }
 
   _maxWidth = width;
   _maxHeight = height;
-  if (!doSimulcast || _track == null) {
-    if (!doSimulcast &&
-        (_track == null || _track.getSettings().height != _maxHeight)) {
-      stopTrack();
-    }
-    // In singlecast we re-open the camera in a new resolution as a workaround
-    // to scaleResolutionDownBy:2 doing weird things in H264. In simulcast we
-    // always do 720p and delegate the scaling to `updateParameters()`.
-    const cameraWidth = doSimulcast ? 1280 : _maxWidth;
-    const cameraHeight = doSimulcast ? 720 : _maxHeight;
-    if (_track == null) {
-      const stream = await navigator.mediaDevices.getUserMedia(
-          {video: {width: cameraWidth, height: cameraHeight}});
-      _track = stream.getTracks()[0];
-      await _pc1.getSenders()[0].replaceTrack(_track);
-    }
+  _maxBitrate = kbps_to_bps(maxBitrateKbps);
+
+  if (_track == null) {
+    const stream = await navigator.mediaDevices.getUserMedia(
+        {video: {width: 1280, height: 720}});
+    _track = stream.getTracks()[0];
+    await _pc1.getSenders()[0].replaceTrack(_track);
   }
   await updateParameters();
 }
@@ -219,19 +199,28 @@ async function updateParameters() {
     params.encodings[i].maxBitrate = _maxBitrate;
     params.encodings[i].scalabilityMode = 'L1T1';
   }
-  // In simulcast we enable or disable layers based on scale factor rather than
-  // reconfigure the track.
-  if (params.encodings.length == 3) {
-    const trackSettings = _track?.getSettings();
-    let trackHeight = trackSettings?.height ? trackSettings.height : 0;
-    let scaleFactor = 1;
-    if (trackHeight > _maxWidth) {
-      scaleFactor = trackHeight / _maxWidth;
-    }
+  // Reconfigure active+scaleResolutionDownBy based on scale factor.
+  const trackSettings = _track?.getSettings();
+  let trackHeight = trackSettings?.height ? trackSettings.height : 0;
+  let scaleFactor = 1;
+  if (trackHeight > _maxHeight) {
+    scaleFactor = trackHeight / _maxHeight;
+  }
+  // Simulcast: Disable layers instead of applying scaling factor.
+  if (kSimulcastCheckbox.checked) {
+    params.encodings[0].scaleResolutionDownBy = 4;
+    params.encodings[1].scaleResolutionDownBy = 2;
+    params.encodings[2].scaleResolutionDownBy = 1;
     for (let i = 0; i < params.encodings.length; ++i) {
       params.encodings[i].active =
           params.encodings[i].scaleResolutionDownBy >= scaleFactor;
     }
+  } else {
+    params.encodings[0].active = true;
+    params.encodings[0].scaleResolutionDownBy = scaleFactor;
+    // (getParameters bug, active changing to true during negotiation???)
+    params.encodings[1].active = false;
+    params.encodings[2].active = false;
   }
   try {
     await sender.setParameters(params);
