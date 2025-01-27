@@ -228,7 +228,7 @@ function swapRidAndMidExtensionsInSimulcastAnswer(answer, localDescription, rids
 }
 
 async function negotiateWithSimulcastTweaks(
-    pc1, pc2, offer, callbackBetweenOfferAndAnswer, mungeOffer = null) {
+    pc1, pc2, offer, mungeOffer = null) {
   if (!mungeOffer) {
     mungeOffer = (sdp) => sdp;  // NO-OP munge
   }
@@ -241,9 +241,6 @@ async function negotiateWithSimulcastTweaks(
     type: 'offer',
     sdp: mungeOffer(swapRidAndMidExtensionsInSimulcastOffer(offer, rids)),
   });
-  if (callbackBetweenOfferAndAnswer) {
-    callbackBetweenOfferAndAnswer();
-  }
   const answer = await pc2.createAnswer();
   await pc2.setLocalDescription(answer);
   const modifiedAnswer = {

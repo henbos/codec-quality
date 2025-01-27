@@ -91,19 +91,6 @@ function getSelectedCodec() {
   return JSON.parse(kCodecSelect.value);
 }
 
-// Workaround to H265 not being selectable from setParameters() sometimes.
-function pc2MaybePreferH265Workaround() {
-  if (getSelectedCodec().mimeType != 'video/H265') {
-    return;
-  }
-  const codecsH265 = RTCRtpReceiver.getCapabilities('video').codecs.filter(
-      codec => codec.mimeType == 'video/H265');
-  const otherCodecs = RTCRtpReceiver.getCapabilities('video').codecs.filter(
-      codec => codec.mimeType != 'video/H265');
-  _pc2.getTransceivers()[0].setCodecPreferences(
-      codecsH265.concat(otherCodecs));
-}
-
 function stop() {
   _prevReport = new Map();
   if (_pc1 != null) {
@@ -179,7 +166,6 @@ async function reconfigure(width, height, maxBitrateKbps) {
         type: 'offer',
         sdp: mungeDependencyDescriptor(_pc1.localDescription.sdp)
       });
-      pc2MaybePreferH265Workaround();
       await _pc2.setLocalDescription();
       await _pc1.setRemoteDescription({
         type: 'answer',
@@ -193,8 +179,7 @@ async function reconfigure(width, height, maxBitrateKbps) {
           {scalabilityMode: 'L1T1', scaleResolutionDownBy: 1, active: true},
       ]});
       await negotiateWithSimulcastTweaks(
-          _pc1, _pc2, null, pc2MaybePreferH265Workaround,
-          mungeDependencyDescriptor);
+          _pc1, _pc2, null, mungeDependencyDescriptor);
     }
     // The remote track is wired up based on getStats().
   }
@@ -218,12 +203,10 @@ async function reconfigure(width, height, maxBitrateKbps) {
       await _pc1.getSenders()[0].replaceTrack(_track);
     }
   }
-  // Workaround to not being able to specify H265 as the send codec in
-  // setParameters() but still wanting to set parameters for bitrate.
-  await updateParameters(/*skipH265=*/true);
+  await updateParameters();
 }
 
-async function updateParameters(skipH265 = false) {
+async function updateParameters() {
   const codec = getSelectedCodec();
   if (_pc1 == null || _pc1.getSenders().length != 1) {
     return;
@@ -232,11 +215,7 @@ async function updateParameters(skipH265 = false) {
   const params = sender.getParameters();
   // Adjust codec and bitrate.
   for (let i = 0; i < params.encodings.length; ++i) {
-    if (!skipH265 || codec.mimeType != 'video/H265') {
-      params.encodings[i].codec = codec;
-    } else {
-      delete params.encodings[i].codec;
-    }
+    params.encodings[i].codec = codec;
     params.encodings[i].maxBitrate = _maxBitrate;
     params.encodings[i].scalabilityMode = 'L1T1';
   }
