@@ -265,6 +265,7 @@ async function doGetStats() {
     if (!stats) {
       continue;
     }
+    // Codec
     let codec = report.get(stats.codecId);
     if (codec) {
       codec = codec.mimeType.substring(6);
@@ -276,9 +277,11 @@ async function doGetStats() {
     } else {
       codec = '';
     }
+    // RID (optional)
     if (stats.rid) {
       codec = `${stats.rid} ${codec}`;
     }
+    // Resolution and frame rate
     let width = stats.frameWidth;
     let height = stats.frameHeight;
     if (!width || !height) {
@@ -290,9 +293,17 @@ async function doGetStats() {
       maxSendWidth = width;
       maxSendHeight = height;
     }
+    // Bitrates
     let actualKbps = Math.round(Bps_to_kbps(delta(stats, 'bytesSent')));
     actualKbps = Math.max(0, actualKbps);
     const targetKbps = Math.round(bps_to_kbps(stats.targetBitrate));
+    // QP
+    const deltaQp = delta(stats, 'qpSum');
+    const deltaFramesEncoded = delta(stats, 'framesEncoded');
+    const avgQp =
+        (deltaQp && deltaFramesEncoded)
+            ? Math.round(deltaQp / deltaFramesEncoded) : 'N/A';
+    // Adaptation status
     let adaptationReason =
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
     adaptationReason =
@@ -302,7 +313,7 @@ async function doGetStats() {
     }
     if (fps) {
       message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
-                 `${targetKbps} kbps${adaptationReason}`;
+                 `${targetKbps} kbps [QP: ${avgQp}]${adaptationReason}`;
     } else {
       message += `-`;
     }
