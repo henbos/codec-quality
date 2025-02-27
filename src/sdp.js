@@ -169,10 +169,17 @@ SDPUtils.writeRtpMap = function(codec) {
 // a=extmap:2/sendonly urn:ietf:params:rtp-hdrext:toffset
 SDPUtils.parseExtmap = function(line) {
   var parts = line.substr(9).split(' ');
+  let uri = '';
+  for (let i = 1; i < parts.length; ++i) {
+    if (uri.length != 0) {
+      uri += ' ';
+    }
+    uri += parts[i];
+  }
   return {
     id: parseInt(parts[0], 10),
     direction: parts[0].indexOf('/') > 0 ? parts[0].split('/')[1] : 'sendrecv',
-    uri: parts[1]
+    uri: uri
   };
 };
 

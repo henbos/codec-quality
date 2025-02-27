@@ -1,6 +1,8 @@
 const kConsole = document.getElementById('consoleId');
 
 const kSimulcastCheckbox = document.getElementById('simulcastCheckboxId');
+const kNegotiateCorruptionCheckbox =
+    document.getElementById('negotiateCorruptionId');
 const kCodecSelect = document.getElementById('codecSelectId');
 const kVideo = document.getElementById('video');
 
@@ -34,6 +36,7 @@ let _track = null;
 let _maxWidth = 0, _maxHeight = 0;
 let _maxBitrate = undefined;
 let _prevReport = new Map();
+let _prevReceiverReport = new Map();
 
 // When the page loads.
 window.onload = async () => {
@@ -106,6 +109,7 @@ function getSelectedCodec() {
 
 function stop() {
   _prevReport = new Map();
+  _prevReceiverReport = new Map();
   if (_pc1 != null) {
     _pc1.close();
     _pc2.close();
@@ -118,11 +122,20 @@ function stop() {
   }
 }
 
-async function toggleSimulcast() {
+async function reconfigureCurrent() {
   if (_pc1 == null) {
     return;
   }
-  reconfigure(_maxWidth, _maxHeight, bps_to_kbps(_maxBitrate));
+  await reconfigure(_maxWidth, _maxHeight, bps_to_kbps(_maxBitrate));
+}
+
+async function toggleCorruptionDetection() {
+  if (_pc1 == null) {
+    return;
+  }
+  const args = { w: _maxWidth, h: _maxHeight, kbps: bps_to_kbps(_maxBitrate) };
+  stop();
+  await reconfigure(args.w, args.h, args.kbps);
 }
 
 function mungeDependencyDescriptor(sdp) {
@@ -160,6 +173,7 @@ function mungeDependencyDescriptor(sdp) {
 
 async function reconfigure(width, height, maxBitrateKbps) {
   const doSimulcast = kSimulcastCheckbox.checked;
+  const enableCorruptionDetection = kNegotiateCorruptionCheckbox.checked;
 
   let isFirstTimeNegotiation = false;
   if (_pc1 == null) {
@@ -183,7 +197,7 @@ async function reconfigure(width, height, maxBitrateKbps) {
       ]});
     }
     await negotiateWithSimulcastTweaks(
-        _pc1, _pc2, null, mungeDependencyDescriptor);
+        _pc1, _pc2, null, enableCorruptionDetection, mungeDependencyDescriptor);
   }
 
   _maxWidth = width;
@@ -247,6 +261,16 @@ async function doGetStats() {
   if (_pc1 == null) {
     return;
   }
+  const showCorruptionMetrics = kNegotiateCorruptionCheckbox.checked;
+  let receiverReport = null, receiverReportAsMap = null;
+  if (showCorruptionMetrics) {
+    receiverReportAsMap = new Map();
+    receiverReport = await _pc2.getStats();
+    for (const stats of receiverReport.values()) {
+      receiverReportAsMap.set(stats.id, stats);
+    }
+  }
+
   const reportAsMap = new Map();
   const report = await _pc1.getStats();
   let maxSendRid = undefined, maxSendWidth = 0, maxSendHeight = 0;
@@ -314,6 +338,28 @@ async function doGetStats() {
     if (fps) {
       message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
                  `${targetKbps} kbps [QP: ${avgQp}]${adaptationReason}`;
+      if (showCorruptionMetrics) {
+        message += `\n\u00a0\u00a0Corruption odds: `;
+        const inboundRtp = receiverReport.values().find(
+            receiverStats => { return receiverStats.type == 'inbound-rtp' &&
+                                      receiverStats.ssrc == stats.ssrc; });
+        const cp = delta(inboundRtp, 'totalCorruptionProbability',
+                         _prevReceiverReport);
+        const cpSqrd = delta(inboundRtp, 'totalSquaredCorruptionProbability',
+                         _prevReceiverReport);
+        const cpDelta = delta(inboundRtp, 'corruptionMeasurements',
+                         _prevReceiverReport);
+        if (cp != null && cpSqrd != null && cpDelta > 0) {
+          message += `${round2(cp/cpDelta)} (^2: ${round2(cpSqrd/cpDelta)})`;
+        } else {
+          message += `N/A`;
+        }
+        if (inboundRtp.corruptionMeasurements != undefined) {
+          message +=
+              `, totals: ${round2(inboundRtp.totalCorruptionProbability)} / ` +
+              `${inboundRtp.corruptionMeasurements}`;
+        }
+      }
     } else {
       message += `-`;
     }
@@ -338,16 +384,24 @@ async function doGetStats() {
   }
 
   _prevReport = reportAsMap;
+  _prevReceiverReport = receiverReportAsMap;
 }
 
 // utils.js
 
-function delta(stats, metricName) {
+function round2(x) {
+  if (x == undefined) {
+    return undefined;
+  }
+  return Math.round(x * 100) / 100;
+}
+
+function delta(stats, metricName, prevReport = _prevReport) {
   const currMetric = stats[metricName];
   if (currMetric == undefined) {
     return undefined;
   }
-  const prevStats = _prevReport.get(stats.id);
+  const prevStats = prevReport.get(stats.id);
   if (!prevStats) {
     return currMetric;
   }

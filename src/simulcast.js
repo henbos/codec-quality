@@ -227,13 +227,34 @@ function swapRidAndMidExtensionsInSimulcastAnswer(answer, localDescription, rids
   return midToRid(answer, localDescription, rids);
 }
 
+function enableCorruptionDetectionForAllTransceivers(pc) {
+  if (!('getHeaderExtensionsToNegotiate' in RTCRtpTransceiver.prototype)) {
+    return;
+  }
+  for (const transceiver of pc.getTransceivers()) {
+    const headerExtensions = transceiver.getHeaderExtensionsToNegotiate();
+    for (const headerExtension of headerExtensions) {
+      if (headerExtension.uri.includes('corruption-detection')) {
+        headerExtension.direction = 'sendrecv';
+      }
+    }
+    transceiver.setHeaderExtensionsToNegotiate(headerExtensions);
+  }
+}
+
 async function negotiateWithSimulcastTweaks(
-    pc1, pc2, offer, mungeOffer = null) {
+    pc1, pc2, offer = null, enableCorrDetection = false, mungeOffer = null) {
   if (!mungeOffer) {
     mungeOffer = (sdp) => sdp;  // NO-OP munge
   }
   const rids = [0, 1, 2];
+  if (offer != null && enableCorrDetection) {
+    throw `Can't enable corruption-detection in existing offer from args`;
+  }
   if (!offer) {
+    if (enableCorrDetection) {
+      enableCorruptionDetectionForAllTransceivers(pc1);
+    }
     offer = await pc1.createOffer();
     await pc1.setLocalDescription(offer);
   }
@@ -241,6 +262,9 @@ async function negotiateWithSimulcastTweaks(
     type: 'offer',
     sdp: mungeOffer(swapRidAndMidExtensionsInSimulcastOffer(offer, rids)),
   });
+  if (enableCorrDetection) {
+    enableCorruptionDetectionForAllTransceivers(pc2);
+  }
   const answer = await pc2.createAnswer();
   await pc2.setLocalDescription(answer);
   const modifiedAnswer = {

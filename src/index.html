@@ -14,8 +14,11 @@
   <!-- <td><button onclick="increaseBitrate()">+10% bitrate</button></td> -->
   <p></p>
   <input type="checkbox" id="simulcastCheckboxId" name="simulcastCheckbox"
-         onclick="toggleSimulcast()"/>
+         onclick="reconfigureCurrent()"/>
   <label for="simulcastCheckbox">Simulcast</label>
+  <input type="checkbox" id="negotiateCorruptionId" name="negotiateCorruption"
+         onclick="toggleCorruptionDetection()"/>
+  <label for="negotiateCorruption">Negotiate corruption-detection</label>
   <table>
     <tr>
       <td></td>
