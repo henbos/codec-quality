@@ -6,6 +6,19 @@ td {
   text-align: center;
 }
 
+.terribleBitrate {
+  color: #C70039;
+}
+.badBitrate {
+  color: #FF5733;
+}
+.goodBitrate {
+  color: green;
+}
+.unrestrictedBitrate {
+  color: blue;
+}
+
 .consoleStatusGood {
   color: limegreen;
 }

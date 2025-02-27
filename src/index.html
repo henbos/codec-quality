@@ -14,7 +14,7 @@
   <!-- <td><button onclick="increaseBitrate()">+10% bitrate</button></td> -->
   <p></p>
   <input type="checkbox" id="simulcastCheckboxId" name="simulcastCheckbox"
-         checked onclick="toggleSimulcast()"/>
+         onclick="toggleSimulcast()"/>
   <label for="simulcastCheckbox">Simulcast</label>
   <table>
     <tr>
@@ -25,38 +25,53 @@
       <td></td>
       <td></td>
     </tr>
-    <!-- Commented out because of not wanting to deal with 1080p scale factors.
-    <tr>
-      <td>1080p</td>
-      <td><button onclick="reconfigure(1920, 1080, 769)">769 kbps</button></td>
-      <td><button onclick="reconfigure(1920, 1080, 2237)">2237 kbps</button></td>
-      <td><button onclick="reconfigure(1920, 1080, 3705)">3705 kbps</button></td>
-      <td></td>
-      <td><button onclick="reconfigure(1920, 1080)">unrestricted</button></td>
-    </tr>-->
     <tr>
       <td>720p</td>
-      <td><button onclick="reconfigure(1280, 720, 481)">481 kbps</button></td>
-      <td><button onclick="reconfigure(1280, 720, 1079)">1079 kbps</button></td>
-      <td><button onclick="reconfigure(1280, 720, 1677)">1677 kbps</button></td>
+      <td><button class="terribleBitrate" onclick="reconfigure(1280, 720, 49)">49 kbps</button></td>
+      <td><button class="terribleBitrate" onclick="reconfigure(1280, 720, 102)">102 kbps</button></td>
+      <td><button class="terribleBitrate" onclick="reconfigure(1280, 720, 156)">156 kbps</button></td>
       <td></td>
-      <td><button onclick="reconfigure(1280, 720)">unrestricted</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(1280, 720, 193)">193 kbps</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(1280, 720, 327)">327 kbps</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(1280, 720, 461)">461 kbps</button></td>
+      <td></td>
+      <td><button class="goodBitrate" onclick="reconfigure(1280, 720, 481)">481 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(1280, 720, 1079)">1079 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(1280, 720, 1677)">1677 kbps</button></td>
+      <td></td>
+      <td><button class="unrestrictedBitrate" onclick="reconfigure(1280, 720)">unrestricted</button></td>
     </tr>
     <tr>
       <td>360p</td>
-      <td><button onclick="reconfigure(640, 360, 193)">193 kbps</button></td>
-      <td><button onclick="reconfigure(640, 360, 327)">327 kbps</button></td>
-      <td><button onclick="reconfigure(640, 360, 461)">461 kbps</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(640, 360, 49)">49 kbps</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(640, 360, 102)">102 kbps</button></td>
+      <td><button class="badBitrate" onclick="reconfigure(640, 360, 156)">156 kbps</button></td>
       <td></td>
-      <td><button onclick="reconfigure(640, 360)">unrestricted</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(640, 360, 193)">193 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(640, 360, 327)">327 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(640, 360, 461)">461 kbps</button></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td><button class="unrestrictedBitrate" onclick="reconfigure(640, 360)">unrestricted</button></td>
     </tr>
     <tr>
       <td>180p</td>
-      <td><button onclick="reconfigure(320, 180, 49)">49 kbps</button></td>
-      <td><button onclick="reconfigure(320, 180, 102)">102 kbps</button></td>
-      <td><button onclick="reconfigure(320, 180, 156)">156 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(320, 180, 49)">49 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(320, 180, 102)">102 kbps</button></td>
+      <td><button class="goodBitrate" onclick="reconfigure(320, 180, 156)">156 kbps</button></td>
       <td></td>
-      <td><button onclick="reconfigure(320, 180)">unrestricted</button></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td><button class="unrestrictedBitrate" onclick="reconfigure(320, 180)">unrestricted</button></td>
     </tr>
   </table>
   <p id="consoleId">

@@ -53,6 +53,7 @@ window.onload = async () => {
   }
 
   // Add codec options to the drop-down.
+  let hasH265 = false;
   for (const codec of RTCRtpSender.getCapabilities('video').codecs) {
     if (codec.mimeType.endsWith('rtx') || codec.mimeType.endsWith('red') ||
         codec.mimeType.endsWith('ulpfec')) {
@@ -81,6 +82,18 @@ window.onload = async () => {
       kHardwareCodecs.push(codec);
     }
     kCodecSelect.appendChild(option);
+    if (codec.mimeType == 'video/H265') {
+      hasH265 = true;
+    }
+  }
+
+  // Default to H265 or AV1.
+  const defaultCodec = hasH265 ? 'video/H265' : 'video/AV1';
+  for (const option of kCodecSelect.children) {
+    if (JSON.parse(option.value).mimeType == defaultCodec) {
+      kCodecSelect.value = option.value;
+      break;
+    }
   }
 
   // Periodically poll getStats()
