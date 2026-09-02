@@ -332,12 +332,18 @@ async function doGetStats() {
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
     adaptationReason =
         (adaptationReason != 'none') ? `, ${adaptationReason} limited` : '';
+    // Encode time
+    const deltaEncodeTime = delta(stats, 'totalEncodeTime');
+    const avgEncodeMs = (deltaEncodeTime && deltaFramesEncoded)
+      ? Math.round(deltaEncodeTime / deltaFramesEncoded * 1000)
+      : null;
     if (message.length > 0) {
       message += '\n';
     }
     if (fps) {
       message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
-                 `${targetKbps} kbps [QP: ${avgQp}]${adaptationReason}`;
+        `${targetKbps} kbps [QP: ${avgQp}]${adaptationReason}` +
+        (avgEncodeMs !== null ? `, encode time: ${avgEncodeMs} ms` : ``);
       if (showCorruptionMetrics) {
         message += `\n\u00a0\u00a0Corruption odds: `;
         const inboundRtp = receiverReport.values().find(
