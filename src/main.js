@@ -37,6 +37,7 @@ let _maxWidth = 0, _maxHeight = 0;
 let _maxBitrate = undefined;
 let _prevReport = new Map();
 let _prevReceiverReport = new Map();
+let outboundRtpsByRidSeries = [];
 
 // When the page loads.
 window.onload = async () => {
@@ -110,6 +111,7 @@ function getSelectedCodec() {
 function stop() {
   _prevReport = new Map();
   _prevReceiverReport = new Map();
+  outboundRtpsByRidSeries = [];
   if (_pc1 != null) {
     _pc1.close();
     _pc2.close();
@@ -221,10 +223,18 @@ async function updateParameters() {
   const [sender] = _pc1.getSenders();
   const params = sender.getParameters();
   // Adjust codec and bitrate.
+  let isCodecSwitch = false;
   for (let i = 0; i < params.encodings.length; ++i) {
+    if (params.encodings[i].codec?.mimeType != codec?.mimeType) {
+      isCodecSwitch = true;
+    }
     params.encodings[i].codec = codec;
     params.encodings[i].maxBitrate = _maxBitrate;
     params.encodings[i].scalabilityMode = 'L1T1';
+  }
+  if (isCodecSwitch) {
+    console.log('Switched codec!');
+    outboundRtpsByRidSeries = [];
   }
   // Reconfigure active+scaleResolutionDownBy based on scale factor.
   const trackSettings = _track?.getSettings();
@@ -284,6 +294,12 @@ async function doGetStats() {
     outboundRtpsByRid.set(
         stats.rid != undefined ? Number(stats.rid) : 0, stats);
   }
+  // Last 3 seconds series, ensures >= 1 PSNR measurements depending on timing
+  // of getStats() poll and WebRTC measurement, if available.
+  outboundRtpsByRidSeries.push(outboundRtpsByRid);
+  while (outboundRtpsByRidSeries.length > 3) {
+    outboundRtpsByRidSeries.shift();
+  }
   for (let i = 0; i < 3; ++i) {
     const stats = outboundRtpsByRid.get(i);
     if (!stats) {
@@ -327,6 +343,9 @@ async function doGetStats() {
     const avgQp =
         (deltaQp && deltaFramesEncoded)
             ? Math.round(deltaQp / deltaFramesEncoded) : 'N/A';
+    // PSNR
+    let avgPsnr = avgPsnrForRid(i);
+    avgPsnr = (avgPsnr != null ? Math.round(avgPsnr) : 'N/A');
     // Adaptation status
     let adaptationReason =
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
@@ -342,8 +361,9 @@ async function doGetStats() {
     }
     if (fps) {
       message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
-        `${targetKbps} kbps [QP: ${avgQp}]${adaptationReason}` +
-        (avgEncodeMs !== null ? `, encode time: ${avgEncodeMs} ms` : ``);
+        `${targetKbps} kbps [QP: ${avgQp} PNSR: ${avgPsnr}]` +
+        `${adaptationReason}` +
+            (avgEncodeMs !== null ? `, encode time: ${avgEncodeMs} ms` : ``);
       if (showCorruptionMetrics) {
         message += `\n\u00a0\u00a0Corruption odds: `;
         const inboundRtp = receiverReport.values().find(
@@ -417,6 +437,31 @@ function delta(stats, metricName, prevReport = _prevReport) {
   }
   const deltaTimestampS = (stats.timestamp - prevStats.timestamp) / 1000;
   return (currMetric - prevMetric) / deltaTimestampS;
+}
+
+function avgPsnrForRid(rid) {
+  let firstOutboundRtp = null;
+  let lastOutboundRtp = null;
+  for (let i = 0; i < outboundRtpsByRidSeries.length; ++i) {
+    const outboundRtp = outboundRtpsByRidSeries[i].get(rid);
+    if (outboundRtp?.psnrSum?.['y'] != undefined) {
+      if (!firstOutboundRtp) {
+        firstOutboundRtp = outboundRtp;
+      }
+      lastOutboundRtp = outboundRtp;
+    }
+  }
+  if (!firstOutboundRtp || !lastOutboundRtp) {
+    return null;
+  }
+  const deltaPsnr =
+      lastOutboundRtp.psnrSum['y'] - firstOutboundRtp.psnrSum['y'];
+  const deltaMeasurements =
+      lastOutboundRtp.psnrMeasurements - firstOutboundRtp.psnrMeasurements;
+  if (deltaMeasurements > 0) {
+    return deltaPsnr / deltaMeasurements;
+  }
+  return null;
 }
 
 function convert(x, fn) {
