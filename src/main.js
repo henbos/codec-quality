@@ -345,7 +345,7 @@ async function doGetStats() {
             ? Math.round(deltaQp / deltaFramesEncoded) : 'N/A';
     // PSNR
     let avgPsnr = avgPsnrForRid(i);
-    avgPsnr = (avgPsnr != null ? Math.round(avgPsnr) : 'N/A');
+    avgPsnr = (avgPsnr != null ? round2(avgPsnr) : 'N/A');
     // Adaptation status
     let adaptationReason =
         stats.qualityLimitationReason ? stats.qualityLimitationReason : 'none';
@@ -361,7 +361,7 @@ async function doGetStats() {
     }
     if (fps) {
       message += `${codec} ${width}x${height} @ ${fps}, ${actualKbps}/` +
-        `${targetKbps} kbps [QP: ${avgQp} PNSR: ${avgPsnr}]` +
+        `${targetKbps} kbps [QP: ${avgQp} PSNR: ${avgPsnr}]` +
         `${adaptationReason}` +
             (avgEncodeMs !== null ? `, encode time: ${avgEncodeMs} ms` : ``);
       if (showCorruptionMetrics) {
